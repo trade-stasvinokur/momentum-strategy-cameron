@@ -4,3 +4,5 @@
 How to Day Trade: The Plain Truth Kindle Edition by Ross Cameron (Author)
 https://www.amazon.com/How-Day-Trade-Plain-Truth-ebook/dp/B0CLKYY4BD/ref=zg_bs_g_154898011_d_sccl_1/133-3119227-0241521?psc=1
 
+Работа с бэкглогом
+https://dzen.ru/a/aGtzHttHxjW4hAfA
