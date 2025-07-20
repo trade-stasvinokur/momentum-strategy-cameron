@@ -1,9 +1,10 @@
 ---
 id: task-0008
 title: Импортировать статью о стратегии в docs/strategy.md
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-14'
+updated_date: '2025-07-20'
 labels: []
 dependencies: []
 ---

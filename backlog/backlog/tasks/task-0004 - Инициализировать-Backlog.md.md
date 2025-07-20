@@ -1,9 +1,10 @@
 ---
 id: task-0004
 title: Инициализировать Backlog.md
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-14'
+updated_date: '2025-07-20'
 labels: []
 dependencies: []
 ---

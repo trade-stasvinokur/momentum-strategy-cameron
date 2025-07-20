@@ -1,9 +1,10 @@
 ---
 id: task-0005
 title: 'Сгенерировать структуру каталогов src/, notebooks/, docs/'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-14'
+updated_date: '2025-07-20'
 labels: []
 dependencies: []
 ---
