@@ -1,10 +1,10 @@
 ---
 id: task-0010
 title: Реализовать Gap-Scanner (Python)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-14'
-updated_date: '2025-07-20'
+updated_date: '2025-07-21'
 labels: []
 dependencies: []
 ---
