@@ -29,6 +29,7 @@ import os
 from typing import List, Dict
 
 from tinkoff.invest import Client, CandleInterval, InstrumentIdType
+from tinkoff.invest.schemas import AssetsRequest
 from tinkoff.invest.utils import now
 
 __all__ = ["scan_gap_up"]
@@ -40,8 +41,8 @@ __all__ = ["scan_gap_up"]
 def _prev_trading_day(day: _dt.date) -> _dt.date:
     """Return the previous weekday (very rough market calendar)."""
     prev = day - _dt.timedelta(days=1)
-    while prev.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
-        prev -= _dt.timedelta(days=1)
+    # while prev.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+    #     prev -= _dt.timedelta(days=1)
     return prev
 
 
@@ -80,60 +81,71 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
     result: List[Dict] = []
 
     with Client(token) as client:
-        assets_resp = client.instruments.get_assets()
+        assets_resp = client.instruments.get_assets(AssetsRequest())
 
-        for asset in assets_resp.assets:
-            if asset.type.name != "ASSET_TYPE_SECURITY":
-                continue  # skip currencies, funds, etc.
-            if asset.security is None:
+        total = len(assets_resp.assets)
+        for i, asset in enumerate(assets_resp.assets):
+            # keep only security‑type assets
+            if getattr(asset.type, "name", str(asset.type)) != "ASSET_TYPE_SECURITY":
                 continue
-            if asset.security.instrument_type != "share":
-                continue  # keep only shares
+            if not getattr(asset, "instruments", None):
+                continue  # nothing to inspect
 
-            uid = asset.uid
-            figi = asset.security.figi
-            ticker = asset.security.ticker
+            # every Asset can contain multiple instruments (different exchanges, classes, etc.)
+            for instr in asset.instruments:
+                if instr.instrument_type != "share":
+                    continue  # we only care about shares
 
-            # --- previous close candle (daily) ---
-            prev_from = _to_ts(prev_day)
-            prev_to = _to_ts(prev_day + _dt.timedelta(days=1))
-            prev_candles = client.market_data.get_candles(
-                instrument_id=uid,
-                from_=prev_from,
-                to=prev_to,
-                interval=CandleInterval.CANDLE_INTERVAL_DAY,
-            ).candles
-            if not prev_candles:
-                continue
-            prev_close = prev_candles[-1].close
-            prev_close_price = prev_close.units + prev_close.nano / 1e9
+                uid = instr.uid
+                figi = instr.figi
+                ticker = instr.ticker
 
-            # --- today open candle (daily) ---
-            today_from = _to_ts(date)
-            today_to = _to_ts(date + _dt.timedelta(days=1))
-            today_candles = client.market_data.get_candles(
-                instrument_id=uid,
-                from_=today_from,
-                to=today_to,
-                interval=CandleInterval.CANDLE_INTERVAL_DAY,
-            ).candles
-            if not today_candles:
-                continue
-            today_open = today_candles[0].open  # first candle of the day
-            today_open_price = today_open.units + today_open.nano / 1e9
+                # --- previous close candle (daily) ---
+                prev_from = _to_ts(prev_day)
+                prev_to = _to_ts(prev_day + _dt.timedelta(days=1))
+                prev_candles = client.market_data.get_candles(
+                    instrument_id=uid,
+                    from_=prev_from,
+                    to=prev_to,
+                    interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                ).candles
+                if not prev_candles:
+                    continue
+                prev_close = prev_candles[-1].close
+                prev_close_price = prev_close.units + prev_close.nano / 1e9
 
-            gap = (today_open_price - prev_close_price) / prev_close_price
-            if gap >= min_gap:
-                result.append(
-                    {
-                        "ticker": ticker,
-                        "figi": figi,
-                        "uid": uid,
-                        "prev_close": prev_close_price,
-                        "open": today_open_price,
-                        "gap": gap,
-                    }
-                )
+                # --- today open candle (daily) ---
+                today_from = _to_ts(date)
+                today_to = _to_ts(date + _dt.timedelta(days=1))
+                today_candles = client.market_data.get_candles(
+                    instrument_id=uid,
+                    from_=today_from,
+                    to=today_to,
+                    interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                ).candles
+                if not today_candles:
+                    continue
+                today_open = today_candles[0].open  # first candle of the day
+                today_open_price = today_open.units + today_open.nano / 1e9
+
+                gap = (today_open_price - prev_close_price) / prev_close_price
+                print(f'{i}/{total}"ticker": {ticker}'
+                      f' "figi": {figi}'
+                      f' "uid": {uid}'
+                      f' "prev_close": {prev_close_price}'
+                      f' "open": {today_open_price}'
+                      f' "gap": {gap}')
+                if gap >= min_gap:
+                    result.append(
+                        {
+                            "ticker": ticker,
+                            "figi": figi,
+                            "uid": uid,
+                            "prev_close": prev_close_price,
+                            "open": today_open_price,
+                            "gap": gap,
+                        }
+                    )
 
     # Sort by gap desc
     return sorted(result, key=lambda x: x["gap"], reverse=True)
