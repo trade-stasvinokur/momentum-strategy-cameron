@@ -1,0 +1,165 @@
+"""gap_scanner.py
+~~~~~~~~~~~~~~~~~
+Simple module to scan Russian stocks that opened with a gap up of **≥ 10 %**
+compared to the previous day close using the Tinkoff Invest API.
+
+Requirements
+------------
+- invest-python (`pip install tinkoff-invest-api`)
+- Environment variable **TINKOFF_INVEST_TOKEN** with your sandbox or live token.
+
+Usage example
+-------------
+```bash
+python -m gap_scanner               # prints gappers for today (UTC)
+python -m gap_scanner --date 2025-07-18  --gap 0.12
+```
+
+You can also import the helper function inside your own scripts:
+```python
+from gap_scanner import scan_gap_up
+stocks = scan_gap_up(min_gap=0.1)
+```
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as _dt
+import os
+from typing import List, Dict
+
+from tinkoff.invest import Client, CandleInterval, InstrumentIdType
+from tinkoff.invest.utils import now
+
+__all__ = ["scan_gap_up"]
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+def _prev_trading_day(day: _dt.date) -> _dt.date:
+    """Return the previous weekday (very rough market calendar)."""
+    prev = day - _dt.timedelta(days=1)
+    while prev.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        prev -= _dt.timedelta(days=1)
+    return prev
+
+
+def _to_ts(date_: _dt.date) -> _dt.datetime:
+    """Convert date to UTC midnight timestamp (Tinkoff expects UTC)."""
+    return _dt.datetime.combine(date_, _dt.time.min, tzinfo=_dt.timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# Core scanner
+# ---------------------------------------------------------------------------
+
+def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[Dict]:
+    """Scan all shares via GetAssets and return those with an **opening gap ≥ min_gap**.
+
+    Parameters
+    ----------
+    min_gap: float, default 0.10
+        Minimal gap expressed as fraction (0.10 == 10 %).
+    date: datetime.date | None
+        Market date to check. Defaults to **today** in UTC.
+
+    Returns
+    -------
+    List[dict]
+        Each dict contains keys: ticker, figi, uid, prev_close, open, gap.
+    """
+    token = os.getenv("TINKOFF_INVEST_TOKEN")
+    if not token:
+        raise RuntimeError("Environment variable TINKOFF_INVEST_TOKEN is not set")
+
+    if date is None:
+        date = now().date()
+    prev_day = _prev_trading_day(date)
+
+    result: List[Dict] = []
+
+    with Client(token) as client:
+        assets_resp = client.instruments.get_assets()
+
+        for asset in assets_resp.assets:
+            if asset.type.name != "ASSET_TYPE_SECURITY":
+                continue  # skip currencies, funds, etc.
+            if asset.security is None:
+                continue
+            if asset.security.instrument_type != "share":
+                continue  # keep only shares
+
+            uid = asset.uid
+            figi = asset.security.figi
+            ticker = asset.security.ticker
+
+            # --- previous close candle (daily) ---
+            prev_from = _to_ts(prev_day)
+            prev_to = _to_ts(prev_day + _dt.timedelta(days=1))
+            prev_candles = client.market_data.get_candles(
+                instrument_id=uid,
+                from_=prev_from,
+                to=prev_to,
+                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+            ).candles
+            if not prev_candles:
+                continue
+            prev_close = prev_candles[-1].close
+            prev_close_price = prev_close.units + prev_close.nano / 1e9
+
+            # --- today open candle (daily) ---
+            today_from = _to_ts(date)
+            today_to = _to_ts(date + _dt.timedelta(days=1))
+            today_candles = client.market_data.get_candles(
+                instrument_id=uid,
+                from_=today_from,
+                to=today_to,
+                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+            ).candles
+            if not today_candles:
+                continue
+            today_open = today_candles[0].open  # first candle of the day
+            today_open_price = today_open.units + today_open.nano / 1e9
+
+            gap = (today_open_price - prev_close_price) / prev_close_price
+            if gap >= min_gap:
+                result.append(
+                    {
+                        "ticker": ticker,
+                        "figi": figi,
+                        "uid": uid,
+                        "prev_close": prev_close_price,
+                        "open": today_open_price,
+                        "gap": gap,
+                    }
+                )
+
+    # Sort by gap desc
+    return sorted(result, key=lambda x: x["gap"], reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# CLI interface
+# ---------------------------------------------------------------------------
+
+def _main() -> None:
+    parser = argparse.ArgumentParser(description="Scan for gap‑up shares (≥10%) using Tinkoff Invest API")
+    parser.add_argument("--date", type=lambda s: _dt.datetime.strptime(s, "%Y-%m-%d").date(), help="Date in YYYY-MM-DD; default today (UTC)")
+    parser.add_argument("--gap", type=float, default=0.10, help="Minimal gap fraction (0.10 == 10 %)")
+    args = parser.parse_args()
+
+    stocks = scan_gap_up(min_gap=args.gap, date=args.date)
+    if not stocks:
+        print("No gappers found.")
+        return
+
+    print(f"Found {len(stocks)} gap‑up shares (≥{args.gap*100:.2f}%):\n")
+    for s in stocks:
+        print(
+            f"{s['ticker']:<10} | Prev close: {s['prev_close']:.2f} | Open: {s['open']:.2f} | Gap: {s['gap']*100:.2f}%"
+        )
+
+
+if __name__ == "__main__":
+    _main()
