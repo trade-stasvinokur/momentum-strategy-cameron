@@ -56,6 +56,7 @@ momentum-strategy-cameron/
 ├── docs/                # документация и подробные статьи по стратегии
 ├── src/                 # основной код проекта (сканер, риск-менеджмент, бэктесты)
 ├── src/gap_scanner      # сканер по поиску акций
+├── src/vwap_levels      # VWAP динамические уровни сопротивления/поддержки
 ├── backlog/             # задачи и Kanban-доска проекта (используется Backlog.md)
 ├── tests/               # юнит-тесты для кода проекта
 ├── docker-compose.yml   # конфигурация для быстрого запуска
@@ -70,4 +71,5 @@ momentum-strategy-cameron/
 * [Книга «How to Day Trade: The Plain Truth» на Amazon](https://www.amazon.com/How-Day-Trade-Plain-Truth-ebook/dp/B0CLKYY4BD/ref=zg_bs_g_154898011_d_sccl_3/133-3119227-0241521?psc=1)
 
 # Запуск решения docker
-docker compose up --build
+docker compose build --no-cache
+docker compose up

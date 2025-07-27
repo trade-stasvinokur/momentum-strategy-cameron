@@ -14,6 +14,7 @@ COPY . /app/
 # 4) Устанавливаем uv и синхронизируем зависимости в системную среду контейнера
 RUN pip install --no-cache-dir uv \
     && uv sync
+EXPOSE 8000
 
 # 5) Команда запуска: выполняем скрипт через uv run
-CMD ["uv", "run", "gap_scanner.py"]
+CMD ["uv", "run", "uvicorn", "gap_scanner:app", "--host", "0.0.0.0", "--port", "8000"]

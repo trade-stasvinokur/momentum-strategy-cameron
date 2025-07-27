@@ -1,11 +1,9 @@
 from __future__ import annotations
-import argparse
 import datetime as _dt
 import os
 from typing import List, Dict
 import time
 import logging
-import sqlite3
 from pathlib import Path
 
 
@@ -15,7 +13,8 @@ from tinkoff.invest.utils import now
 
 from dotenv import load_dotenv
 from tinkoff.invest.exceptions import RequestError
-from apscheduler.schedulers.blocking import BlockingScheduler
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 
 
@@ -30,13 +29,6 @@ if _env_path.exists():
 else:
     raise RuntimeError(".env file not found. Please create a .env file with TINKOFF_INVEST_TOKEN=<your token>")
 
-
-# ---------------------------------------------------------------------------
-# SQLite database path
-# ---------------------------------------------------------------------------
-_default_db = Path(__file__).resolve().parent / "gap_scanner.db"
-# Read database path from .env / environment variable
-_DB_PATH = Path(os.getenv("GAP_SCANNER_DB", _default_db)).expanduser().resolve()
 
 # ---------------------------------------------------------------------------
 # Logging configuration
@@ -57,55 +49,18 @@ logger = logging.getLogger(__name__)
 # library calls like "GetAssets"/"GetCandles" will appear only with LOG_LEVEL=DEBUG
 
 # ---------------------------------------------------------------------------
-# SQLite helpers
+# FastAPI application
 # ---------------------------------------------------------------------------
-def _init_db() -> None:
-    """Ensure the main table (gap_records) exists."""
-    with sqlite3.connect(_DB_PATH) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS gap_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                date TEXT NOT NULL,
-                ticker TEXT NOT NULL,
-                figi TEXT NOT NULL,
-                uid TEXT NOT NULL,
-                prev_close REAL,
-                open REAL,
-                gap REAL
-            )
-            """
-        )
+app = FastAPI(title="Gap Scanner API")
 
-def _save_gap_records(records: List[Dict], date_: _dt.date) -> None:
-    """Save *all* gap records from one scan into the DB."""
-    if not records:
-        return
-    _init_db()
-    with sqlite3.connect(_DB_PATH) as conn:
-        conn.executemany(
-            """
-            INSERT INTO gap_records
-            (timestamp, date, ticker, figi, uid, prev_close, open, gap)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    _dt.datetime.utcnow().isoformat(timespec="seconds"),
-                    date_.isoformat(),
-                    r["ticker"],
-                    r["figi"],
-                    r["uid"],
-                    r["prev_close"],
-                    r["open"],
-                    r["gap"],
-                )
-                for r in records
-            ],
-        )
-        conn.commit()
-    logger.info(f"Saved {len(records)} gap records to {_DB_PATH.name}")
+# Allow requests from any origin (adjust in production!)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -280,38 +235,27 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
     return sorted(result, key=lambda x: x["gap"], reverse=True)
 
 
+
 # ---------------------------------------------------------------------------
-# CLI interface
+# API endpoints
 # ---------------------------------------------------------------------------
 
-def _main() -> None:
-    parser = argparse.ArgumentParser(description="Scan for gap‑up shares (≥10%) using Tinkoff Invest API")
-    parser.add_argument("--date", type=lambda s: _dt.datetime.strptime(s, "%Y-%m-%d").date(), help="Date in YYYY-MM-DD; default today (UTC)")
-    parser.add_argument("--gap", type=float, default=0.10, help="Minimal gap fraction (0.10 == 10 %)")
-    args = parser.parse_args()
+@app.get("/gap-up")
+def read_gap_up(
+    min_gap: float = Query(0.10, description="Minimal gap fraction (0.10 == 10 %)", ge=0.0),
+    date: str | None = Query(None, description="Date in YYYY-MM-DD; default today (UTC)"),
+):
+    """Return shares whose **opening gap** ≥ *min_gap* on the given *date*."""
+    if date:
+        try:
+            date_parsed = _dt.datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+    else:
+        date_parsed = None
 
-    stocks = scan_gap_up(min_gap=args.gap, date=args.date)
-    if not stocks:
-        logger.info("No gappers found.")
-        return
-    # Save *all* detected gap records
-    logger.info("Saving gap records to DB")
-    _save_gap_records(stocks, args.date or now().date())
-
-    logger.info(f"Found {len(stocks)} gap‑up shares (≥{args.gap*100:.2f}%):")
-    for s in stocks:
-        logger.info(
-            f"{s['ticker']:<10} | Prev close: {s['prev_close']:.2f} | "
-            f"Open: {s['open']:.2f} | Gap: {s['gap']*100:.2f}%"
-        )
-
-
-if __name__ == "__main__":
-    # run once immediately
-    _main()
-
-    # schedule daily run at 10:00 Moscow time
-    scheduler = BlockingScheduler(timezone="Europe/Moscow")
-    scheduler.add_job(_main, trigger="cron", hour=10, minute=0)
-    logger.info("Scheduler started – gap scanner will run daily at 10:00 MSK")
-    scheduler.start()
+    results = scan_gap_up(min_gap=min_gap, date=date_parsed)
+    # Mark whether this record was returned only for back‑test purposes (no gap met the threshold)
+    for r in results:
+        r["gap_test"] = r["gap"] < min_gap
+    return {"count": len(results), "results": results}

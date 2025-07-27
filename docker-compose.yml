@@ -1,6 +1,5 @@
 services:
   gap_scanner:
-    build:
-      context: ./src/gap_scanner/.
-      dockerfile: Dockerfile
-    restart: unless-stopped
+    build: ./src/gap_scanner
+    ports:
+      - "8000:8000"
