@@ -1,33 +1,11 @@
-"""gap_scanner.py
-~~~~~~~~~~~~~~~~~
-Simple module to scan Russian stocks that opened with a gap up of **≥ 10 %**
-compared to the previous day close using the Tinkoff Invest API.
-
-Requirements
-------------
-- invest-python (`pip install tinkoff-invest-api`)
-- Environment variable **TINKOFF_INVEST_TOKEN** with your sandbox or live token.
-- python-dotenv (`pip install python-dotenv`)
-
-Usage example
--------------
-```bash
-python -m gap_scanner               # prints gappers for today (UTC)
-python -m gap_scanner --date 2025-07-18  --gap 0.12
-```
-
-You can also import the helper function inside your own scripts:
-```python
-from gap_scanner import scan_gap_up
-stocks = scan_gap_up(min_gap=0.1)
-```
-"""
 from __future__ import annotations
 
 import argparse
 import datetime as _dt
 import os
 from typing import List, Dict
+import time
+import re
 
 from tinkoff.invest import Client, CandleInterval, InstrumentIdType
 from tinkoff.invest.schemas import AssetsRequest
@@ -35,6 +13,8 @@ from tinkoff.invest.utils import now
 
 from pathlib import Path
 from dotenv import load_dotenv
+from tinkoff.invest.exceptions import RequestError
+from grpc import StatusCode
 
 
 __all__ = ["scan_gap_up"]
@@ -117,28 +97,80 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                 # --- previous close candle (daily) ---
                 prev_from = _to_ts(prev_day)
                 prev_to = _to_ts(prev_day + _dt.timedelta(days=1))
-                prev_candles = client.market_data.get_candles(
-                    instrument_id=uid,
-                    from_=prev_from,
-                    to=prev_to,
-                    interval=CandleInterval.CANDLE_INTERVAL_DAY,
-                ).candles
+                try:
+                    prev_candles = client.market_data.get_candles(
+                        instrument_id=uid,
+                        from_=prev_from,
+                        to=prev_to,
+                        interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                    ).candles
+                except RequestError as e:
+                    if getattr(e, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
+                        limit_hdr = getattr(e.metadata, "ratelimit_limit", "")
+                        match = re.search(r"w=(\d+)", str(limit_hdr))
+                        wait_sec = int(match.group(1)) if match else 60
+                        print(f"[rate‑limit] waiting {wait_sec}s before retry for {ticker}")
+                        time.sleep(wait_sec)
+                        # ---- retry once ----
+                        try:
+                            prev_candles = client.market_data.get_candles(
+                                instrument_id=uid,
+                                from_=prev_from,
+                                to=prev_to,
+                                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                            ).candles
+                        except RequestError as e2:
+                            if getattr(e2, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
+                                print(f"[rate‑limit] skipping {ticker}: still resource exhausted after retry")
+                                continue
+                            print(f"[error] {ticker}: {e2}")
+                            continue
+                    else:
+                        print(f"[error] {ticker}: {e}")
+                        continue
                 if not prev_candles:
                     continue
-                prev_close = prev_candles[-1].close
-                prev_close_price = prev_close.units + prev_close.nano / 1e9
 
                 # --- today open candle (daily) ---
                 today_from = _to_ts(date)
                 today_to = _to_ts(date + _dt.timedelta(days=1))
-                today_candles = client.market_data.get_candles(
-                    instrument_id=uid,
-                    from_=today_from,
-                    to=today_to,
-                    interval=CandleInterval.CANDLE_INTERVAL_DAY,
-                ).candles
+                try:
+                    today_candles = client.market_data.get_candles(
+                        instrument_id=uid,
+                        from_=today_from,
+                        to=today_to,
+                        interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                    ).candles
+                except RequestError as e:
+                    if getattr(e, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
+                        limit_hdr = getattr(e.metadata, "ratelimit_limit", "")
+                        match = re.search(r"w=(\d+)", str(limit_hdr))
+                        wait_sec = int(match.group(1)) if match else 60
+                        print(f"[rate‑limit] waiting {wait_sec}s before retry for {ticker}")
+                        time.sleep(wait_sec)
+                        # ---- retry once ----
+                        try:
+                            today_candles = client.market_data.get_candles(
+                                instrument_id=uid,
+                                from_=today_from,
+                                to=today_to,
+                                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                            ).candles
+                        except RequestError as e2:
+                            if getattr(e2, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
+                                print(f"[rate‑limit] skipping {ticker}: still resource exhausted after retry")
+                                continue
+                            print(f"[error] {ticker}: {e2}")
+                            continue
+                    else:
+                        print(f"[error] {ticker}: {e}")
+                        continue
                 if not today_candles:
                     continue
+
+                prev_close = prev_candles[-1].close
+                prev_close_price = prev_close.units + prev_close.nano / 1e9
+
                 today_open = today_candles[0].open  # first candle of the day
                 today_open_price = today_open.units + today_open.nano / 1e9
 
