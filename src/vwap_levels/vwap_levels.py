@@ -1,13 +1,14 @@
 from __future__ import annotations
 import os
 import datetime as _dt
-import sqlite3
 from pathlib import Path
 from typing import List, Dict
 
 import pandas as pd
 from tinkoff.invest import Client, CandleInterval
 from tinkoff.invest.utils import now
+from fastapi import FastAPI, HTTPException
+import uvicorn
 
 from dotenv import load_dotenv
 
@@ -21,58 +22,10 @@ else:
     raise RuntimeError(".env file not found. Please create a .env file with TINKOFF_INVEST_TOKEN=<your token>")
 
 
-# путь к той же БД
-DB_PATH = Path(os.getenv("GAP_SCANNER_DB", "")).expanduser().resolve()
-
 # ──────────────────────────────────────────────────────────────
 # DB helpers
 # ──────────────────────────────────────────────────────────────
-def _init_db() -> None:
-    """Создаёт таблицу vwap_levels, если её ещё нет."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS vwap_levels (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                date TEXT NOT NULL,
-                ticker TEXT NOT NULL,
-                vwap REAL,
-                support REAL,
-                resistance REAL,
-                std REAL
-            )
-            """
-        )
 
-def _save_level(
-    date_: _dt.date,
-    ticker: str,
-    vwap: float,
-    support: float,
-    resistance: float,
-    std: float,
-) -> None:
-    _init_db()
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            """
-            INSERT INTO vwap_levels
-              (timestamp, date, ticker, vwap, support, resistance, std)
-            VALUES
-              (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                _dt.datetime.utcnow().isoformat(timespec="seconds"),
-                date_.isoformat(),
-                ticker,
-                vwap,
-                support,
-                resistance,
-                std,
-            ),
-        )
-        conn.commit()
 
 # ──────────────────────────────────────────────────────────────
 # API helpers
@@ -141,9 +94,6 @@ def calc_vwap_levels(
     support = vwap_today - std
     resistance = vwap_today + std
 
-    # сохранить
-    _save_level(date_, ticker, vwap_today, support, resistance, std)
-
     return {
         "vwap": vwap_today,
         "support": support,
@@ -151,51 +101,36 @@ def calc_vwap_levels(
         "std": std,
     }
 
-# ──────────────────────────────────────────────────────────────
-# Utility: достаём список тикеров-UID из gap_records
-# ──────────────────────────────────────────────────────────────
-def _tickers_from_gap_db(date_: _dt.date) -> List[Dict[str, str]]:
-    sql = """
-        SELECT DISTINCT ticker, uid
-        FROM gap_records
-        WHERE date = :day
+app = FastAPI(title="VWAP Levels API")
+
+@app.get("/vwap-levels")
+def vwap_levels_endpoint(
+    ticker: str,
+    uid: str,
+    date: str | None = None,
+):
     """
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute(sql, {"day": date_.isoformat()}).fetchall()
-    return [{"ticker": t, "uid": u} for t, u in rows]
+    Calculate VWAP, support, resistance and std for a given ticker.
 
-# ──────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────
+    **Parameters**
+    - **ticker**: Human‑readable ticker symbol
+    - **uid**: Tinkoff instrument UID
+    - **date**: Optional trading date in YYYY‑MM‑DD (UTC). Defaults to today.
+    """
+    try:
+        date_parsed = (
+            _dt.datetime.strptime(date, "%Y-%m-%d").date() if date else None
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid date format; expected YYYY‑MM‑DD",
+        ) from exc
+
+    try:
+        return calc_vwap_levels(ticker, uid, date_parsed)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 if __name__ == "__main__":
-    import argparse, logging
-
-    parser = argparse.ArgumentParser(description="Расчёт VWAP-уровней S/R")
-    parser.add_argument(
-        "--date",
-        type=lambda s: _dt.datetime.strptime(s, "%Y-%m-%d").date(),
-        help="Дата YYYY-MM-DD; по умолчанию сегодня (UTC)",
-    )
-    parser.add_argument(
-        "--ticker",
-        help="Один тикер; если не задано, берём все тикеры из gap_records",
-    )
-    args = parser.parse_args()
-
-    target_date = args.date or now().date()
-    tickers = (
-        [{"ticker": args.ticker, "uid": None}]
-        if args.ticker
-        else _tickers_from_gap_db(target_date)
-    )
-
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    for item in tickers:
-        try:
-            res = calc_vwap_levels(item["ticker"], item["uid"], target_date)
-            logging.info(
-                f"{item['ticker']}: VWAP={res['vwap']:.2f}  "
-                f"S={res['support']:.2f}  R={res['resistance']:.2f}"
-            )
-        except Exception as e:
-            logging.error(f"{item['ticker']}: {e}")
+    uvicorn.run("vwap_levels.vwap_levels:app", host="0.0.0.0", port=8001, reload=True)

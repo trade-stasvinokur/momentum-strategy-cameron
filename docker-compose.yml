@@ -3,3 +3,9 @@ services:
     build: ./src/gap_scanner
     ports:
       - "8000:8000"
+    restart: unless-stopped
+  vwap_levels:
+    build: ./src/vwap_levels
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
