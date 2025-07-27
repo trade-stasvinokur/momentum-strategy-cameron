@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import argparse
 import datetime as _dt
 import os
@@ -16,6 +15,7 @@ from tinkoff.invest.utils import now
 
 from dotenv import load_dotenv
 from tinkoff.invest.exceptions import RequestError
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 
 
@@ -306,4 +306,11 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
+    # run once immediately
     _main()
+
+    # schedule daily run at 10:00 Moscow time
+    scheduler = BlockingScheduler(timezone="Europe/Moscow")
+    scheduler.add_job(_main, trigger="cron", hour=10, minute=0)
+    logger.info("Scheduler started – gap scanner will run daily at 10:00 MSK")
+    scheduler.start()
