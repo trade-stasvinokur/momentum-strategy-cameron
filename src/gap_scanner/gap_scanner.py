@@ -6,6 +6,7 @@ import os
 from typing import List, Dict
 import time
 import re
+import logging
 
 from tinkoff.invest import Client, CandleInterval, InstrumentIdType
 from tinkoff.invest.schemas import AssetsRequest
@@ -17,7 +18,26 @@ from tinkoff.invest.exceptions import RequestError
 from grpc import StatusCode
 
 
+
 __all__ = ["scan_gap_up"]
+
+# ---------------------------------------------------------------------------
+# Logging configuration
+# ---------------------------------------------------------------------------
+_log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+_log_level = getattr(logging, _log_level_str, logging.INFO)
+logging.basicConfig(
+    level=_log_level,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+# Downgrade noisy third‑party loggers (e.g. Tinkoff gRPC stubs) to DEBUG only
+_noisy_libs = ("tinkoff", "grpc")
+for _lib in _noisy_libs:
+    lib_logger = logging.getLogger(_lib)
+    # Show their logs only when global level is DEBUG, otherwise silence them
+    lib_logger.setLevel(logging.DEBUG if _log_level == logging.DEBUG else logging.WARNING)
+logger = logging.getLogger(__name__)
+# library calls like "GetAssets"/"GetCandles" will appear only with LOG_LEVEL=DEBUG
 
 # ---------------------------------------------------------------------------
 # Load environment variables from .env
@@ -35,8 +55,6 @@ else:
 def _prev_trading_day(day: _dt.date) -> _dt.date:
     """Return the previous weekday (very rough market calendar)."""
     prev = day - _dt.timedelta(days=1)
-    # while prev.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
-    #     prev -= _dt.timedelta(days=1)
     return prev
 
 
@@ -109,7 +127,7 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                         limit_hdr = getattr(e.metadata, "ratelimit_limit", "")
                         match = re.search(r"w=(\d+)", str(limit_hdr))
                         wait_sec = int(match.group(1)) if match else 60
-                        print(f"[rate‑limit] waiting {wait_sec}s before retry for {ticker}")
+                        logger.warning(f"rate‑limit: waiting {wait_sec}s before retry for {ticker}")
                         time.sleep(wait_sec)
                         # ---- retry once ----
                         try:
@@ -121,12 +139,12 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                             ).candles
                         except RequestError as e2:
                             if getattr(e2, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
-                                print(f"[rate‑limit] skipping {ticker}: still resource exhausted after retry")
+                                logger.warning(f"rate‑limit: skipping {ticker}: still resource exhausted after retry")
                                 continue
-                            print(f"[error] {ticker}: {e2}")
+                            logger.error(f"{ticker}: {e2}")
                             continue
                     else:
-                        print(f"[error] {ticker}: {e}")
+                        logger.error(f"{ticker}: {e}")
                         continue
                 if not prev_candles:
                     continue
@@ -146,7 +164,7 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                         limit_hdr = getattr(e.metadata, "ratelimit_limit", "")
                         match = re.search(r"w=(\d+)", str(limit_hdr))
                         wait_sec = int(match.group(1)) if match else 60
-                        print(f"[rate‑limit] waiting {wait_sec}s before retry for {ticker}")
+                        logger.warning(f"rate‑limit: waiting {wait_sec}s before retry for {ticker}")
                         time.sleep(wait_sec)
                         # ---- retry once ----
                         try:
@@ -158,12 +176,12 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                             ).candles
                         except RequestError as e2:
                             if getattr(e2, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
-                                print(f"[rate‑limit] skipping {ticker}: still resource exhausted after retry")
+                                logger.warning(f"rate‑limit: skipping {ticker}: still resource exhausted after retry")
                                 continue
-                            print(f"[error] {ticker}: {e2}")
+                            logger.error(f"{ticker}: {e2}")
                             continue
                     else:
-                        print(f"[error] {ticker}: {e}")
+                        logger.error(f"{ticker}: {e}")
                         continue
                 if not today_candles:
                     continue
@@ -175,12 +193,12 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                 today_open_price = today_open.units + today_open.nano / 1e9
 
                 gap = (today_open_price - prev_close_price) / prev_close_price
-                print(f'{i}/{total}"ticker": {ticker}'
-                      f' "figi": {figi}'
-                      f' "uid": {uid}'
-                      f' "prev_close": {prev_close_price}'
-                      f' "open": {today_open_price}'
-                      f' "gap": {gap}')
+                logger.info(f'{i}/{total}"ticker": {ticker}'
+                             f' "figi": {figi}'
+                             f' "uid": {uid}'
+                             f' "prev_close": {prev_close_price}'
+                             f' "open": {today_open_price}'
+                             f' "gap": {gap}')
                 if gap >= min_gap:
                     result.append(
                         {
@@ -209,13 +227,14 @@ def _main() -> None:
 
     stocks = scan_gap_up(min_gap=args.gap, date=args.date)
     if not stocks:
-        print("No gappers found.")
+        logger.info("No gappers found.")
         return
 
-    print(f"Found {len(stocks)} gap‑up shares (≥{args.gap*100:.2f}%):\n")
+    logger.info(f"Found {len(stocks)} gap‑up shares (≥{args.gap*100:.2f}%):")
     for s in stocks:
-        print(
-            f"{s['ticker']:<10} | Prev close: {s['prev_close']:.2f} | Open: {s['open']:.2f} | Gap: {s['gap']*100:.2f}%"
+        logger.info(
+            f"{s['ticker']:<10} | Prev close: {s['prev_close']:.2f} | "
+            f"Open: {s['open']:.2f} | Gap: {s['gap']*100:.2f}%"
         )
 
 
