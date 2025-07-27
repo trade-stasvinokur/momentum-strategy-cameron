@@ -5,21 +5,28 @@ import datetime as _dt
 import os
 from typing import List, Dict
 import time
-import re
 import logging
+import sqlite3
+from pathlib import Path
+
 
 from tinkoff.invest import Client, CandleInterval, InstrumentIdType
 from tinkoff.invest.schemas import AssetsRequest
 from tinkoff.invest.utils import now
 
-from pathlib import Path
 from dotenv import load_dotenv
 from tinkoff.invest.exceptions import RequestError
-from grpc import StatusCode
 
 
 
 __all__ = ["scan_gap_up"]
+
+# ---------------------------------------------------------------------------
+# SQLite database path
+# ---------------------------------------------------------------------------
+_default_db = Path(__file__).resolve().parent / "gap_scanner.db"
+# Read database path from .env / environment variable
+_DB_PATH = Path(os.getenv("GAP_SCANNER_DB", _default_db)).expanduser().resolve()
 
 # ---------------------------------------------------------------------------
 # Logging configuration
@@ -47,6 +54,57 @@ if _env_path.exists():
     load_dotenv(dotenv_path=_env_path)  # load variables from .env into environment
 else:
     raise RuntimeError(".env file not found. Please create a .env file with TINKOFF_INVEST_TOKEN=<your token>")
+
+# ---------------------------------------------------------------------------
+# SQLite helpers
+# ---------------------------------------------------------------------------
+def _init_db() -> None:
+    """Ensure the main table (gap_records) exists."""
+    with sqlite3.connect(_DB_PATH) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gap_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                date TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                figi TEXT NOT NULL,
+                uid TEXT NOT NULL,
+                prev_close REAL,
+                open REAL,
+                gap REAL
+            )
+            """
+        )
+
+def _save_gap_records(records: List[Dict], date_: _dt.date) -> None:
+    """Save *all* gap records from one scan into the DB."""
+    if not records:
+        return
+    _init_db()
+    with sqlite3.connect(_DB_PATH) as conn:
+        conn.executemany(
+            """
+            INSERT INTO gap_records
+            (timestamp, date, ticker, figi, uid, prev_close, open, gap)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    _dt.datetime.utcnow().isoformat(timespec="seconds"),
+                    date_.isoformat(),
+                    r["ticker"],
+                    r["figi"],
+                    r["uid"],
+                    r["prev_close"],
+                    r["open"],
+                    r["gap"],
+                )
+                for r in records
+            ],
+        )
+        conn.commit()
+    logger.info(f"Saved {len(records)} gap records to {_DB_PATH.name}")
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -91,6 +149,8 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
     prev_day = _prev_trading_day(date)
 
     result: List[Dict] = []
+    max_gap: float = float("-inf")
+    max_stock: Dict | None = None
 
     with Client(token) as client:
         assets_resp = client.instruments.get_assets(AssetsRequest())
@@ -123,13 +183,9 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                         interval=CandleInterval.CANDLE_INTERVAL_DAY,
                     ).candles
                 except RequestError as e:
-                    if getattr(e, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
-                        limit_hdr = getattr(e.metadata, "ratelimit_limit", "")
-                        match = re.search(r"w=(\d+)", str(limit_hdr))
-                        wait_sec = int(match.group(1)) if match else 60
-                        logger.warning(f"rate‑limit: waiting {wait_sec}s before retry for {ticker}")
-                        time.sleep(wait_sec)
-                        # ---- retry once ----
+                    if "RESOURCE_EXHAUSTED" in str(e):
+                        logger.warning("rate‑limit hit (prev candles); sleeping 60 s then retrying once")
+                        time.sleep(60)
                         try:
                             prev_candles = client.market_data.get_candles(
                                 instrument_id=uid,
@@ -137,11 +193,8 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                                 to=prev_to,
                                 interval=CandleInterval.CANDLE_INTERVAL_DAY,
                             ).candles
-                        except RequestError as e2:
-                            if getattr(e2, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
-                                logger.warning(f"rate‑limit: skipping {ticker}: still resource exhausted after retry")
-                                continue
-                            logger.error(f"{ticker}: {e2}")
+                        except RequestError:
+                            logger.error(f"retry failed for {ticker}; skipping")
                             continue
                     else:
                         logger.error(f"{ticker}: {e}")
@@ -160,13 +213,9 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                         interval=CandleInterval.CANDLE_INTERVAL_DAY,
                     ).candles
                 except RequestError as e:
-                    if getattr(e, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
-                        limit_hdr = getattr(e.metadata, "ratelimit_limit", "")
-                        match = re.search(r"w=(\d+)", str(limit_hdr))
-                        wait_sec = int(match.group(1)) if match else 60
-                        logger.warning(f"rate‑limit: waiting {wait_sec}s before retry for {ticker}")
-                        time.sleep(wait_sec)
-                        # ---- retry once ----
+                    if "RESOURCE_EXHAUSTED" in str(e):
+                        logger.warning("rate‑limit hit (today candles); sleeping 60 s then retrying once")
+                        time.sleep(60)
                         try:
                             today_candles = client.market_data.get_candles(
                                 instrument_id=uid,
@@ -174,11 +223,8 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                                 to=today_to,
                                 interval=CandleInterval.CANDLE_INTERVAL_DAY,
                             ).candles
-                        except RequestError as e2:
-                            if getattr(e2, "status_code", None) == StatusCode.RESOURCE_EXHAUSTED:
-                                logger.warning(f"rate‑limit: skipping {ticker}: still resource exhausted after retry")
-                                continue
-                            logger.error(f"{ticker}: {e2}")
+                        except RequestError:
+                            logger.error(f"retry failed for {ticker}; skipping")
                             continue
                     else:
                         logger.error(f"{ticker}: {e}")
@@ -199,6 +245,17 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                              f' "prev_close": {prev_close_price}'
                              f' "open": {today_open_price}'
                              f' "gap": {gap}')
+                # track absolute maximum gap stock
+                if gap > max_gap:
+                    max_gap = gap
+                    max_stock = {
+                        "ticker": ticker,
+                        "figi": figi,
+                        "uid": uid,
+                        "prev_close": prev_close_price,
+                        "open": today_open_price,
+                        "gap": gap,
+                    }
                 if gap >= min_gap:
                     result.append(
                         {
@@ -211,6 +268,13 @@ def scan_gap_up(*, min_gap: float = 0.10, date: _dt.date | None = None) -> List[
                         }
                     )
 
+    # If no stocks met the gap threshold, include the max‑gap stock for testing
+    if not result and max_stock is not None:
+        logger.info(
+            f"No gaps ≥{min_gap*100:.2f}% found; adding max‑gap "
+            f"{max_stock['ticker']} ({max_gap*100:.2f}%) for back‑test"
+        )
+        result.append(max_stock)
     # Sort by gap desc
     return sorted(result, key=lambda x: x["gap"], reverse=True)
 
@@ -229,6 +293,9 @@ def _main() -> None:
     if not stocks:
         logger.info("No gappers found.")
         return
+    # Save *all* detected gap records
+    logger.info("Saving gap records to DB")
+    _save_gap_records(stocks, args.date or now().date())
 
     logger.info(f"Found {len(stocks)} gap‑up shares (≥{args.gap*100:.2f}%):")
     for s in stocks:
