@@ -22,6 +22,16 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 __all__ = ["scan_gap_up"]
 
 # ---------------------------------------------------------------------------
+# Load environment variables from .env
+# ---------------------------------------------------------------------------
+_env_path = Path(__file__).resolve().parent / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)  # load variables from .env into environment
+else:
+    raise RuntimeError(".env file not found. Please create a .env file with TINKOFF_INVEST_TOKEN=<your token>")
+
+
+# ---------------------------------------------------------------------------
 # SQLite database path
 # ---------------------------------------------------------------------------
 _default_db = Path(__file__).resolve().parent / "gap_scanner.db"
@@ -45,15 +55,6 @@ for _lib in _noisy_libs:
     lib_logger.setLevel(logging.DEBUG if _log_level == logging.DEBUG else logging.WARNING)
 logger = logging.getLogger(__name__)
 # library calls like "GetAssets"/"GetCandles" will appear only with LOG_LEVEL=DEBUG
-
-# ---------------------------------------------------------------------------
-# Load environment variables from .env
-# ---------------------------------------------------------------------------
-_env_path = Path(__file__).resolve().parent / ".env"
-if _env_path.exists():
-    load_dotenv(dotenv_path=_env_path)  # load variables from .env into environment
-else:
-    raise RuntimeError(".env file not found. Please create a .env file with TINKOFF_INVEST_TOKEN=<your token>")
 
 # ---------------------------------------------------------------------------
 # SQLite helpers
