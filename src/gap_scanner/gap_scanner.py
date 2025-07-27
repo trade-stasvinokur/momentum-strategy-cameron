@@ -7,6 +7,7 @@ Requirements
 ------------
 - invest-python (`pip install tinkoff-invest-api`)
 - Environment variable **TINKOFF_INVEST_TOKEN** with your sandbox or live token.
+- python-dotenv (`pip install python-dotenv`)
 
 Usage example
 -------------
@@ -32,7 +33,20 @@ from tinkoff.invest import Client, CandleInterval, InstrumentIdType
 from tinkoff.invest.schemas import AssetsRequest
 from tinkoff.invest.utils import now
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+
 __all__ = ["scan_gap_up"]
+
+# ---------------------------------------------------------------------------
+# Load environment variables from .env
+# ---------------------------------------------------------------------------
+_env_path = Path(__file__).resolve().parent / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)  # load variables from .env into environment
+else:
+    raise RuntimeError(".env file not found. Please create a .env file with TINKOFF_INVEST_TOKEN=<your token>")
 
 # ---------------------------------------------------------------------------
 # Helper functions
