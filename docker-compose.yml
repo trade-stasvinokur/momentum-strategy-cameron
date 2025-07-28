@@ -47,6 +47,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+  bull_flag:
+    build:
+      context: ./src/strategies
+      dockerfile: DockerfileBullFlag
+    ports:
+      - "8004:8004"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
   orchestrator:
     build: ./src/orchestrator
     environment:
@@ -59,5 +72,7 @@ services:
       gap_and_go:
         condition: service_healthy
       flat_breakout:
+        condition: service_healthy
+      bull_flag:
         condition: service_healthy
     restart: unless-stopped

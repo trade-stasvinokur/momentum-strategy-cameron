@@ -1,0 +1,25 @@
+# -------------------------------
+# Dockerfile for Bull Flag strategy service
+# -------------------------------
+
+# 1) Base image with Python 3.13
+FROM python:3.13-slim
+
+# 2) Set working directory
+WORKDIR /app
+
+# 3) Copy source code
+COPY . /app/
+
+# Install curl (for healthchecks) and clean up
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 4) Install uv tool and sync dependencies from pyproject
+RUN pip install --no-cache-dir uv && uv sync
+
+# 5) Expose port for service
+EXPOSE 8004
+
+# 6) Command to run the FastAPI app with Uvicorn
+CMD ["uv", "run", "uvicorn", "bull_flag:app", "--host", "0.0.0.0", "--port", "8004"]
