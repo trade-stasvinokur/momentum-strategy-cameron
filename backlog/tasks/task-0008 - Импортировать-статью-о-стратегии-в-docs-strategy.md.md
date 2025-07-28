@@ -4,9 +4,10 @@ title: Импортировать статью о стратегии в docs/str
 status: Done
 assignee: []
 created_date: '2025-07-14'
-updated_date: '2025-07-20'
+updated_date: '2025-07-28'
 labels: []
 dependencies: []
+ordinal: 8000
 ---
 
 ## Description

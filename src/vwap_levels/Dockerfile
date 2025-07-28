@@ -11,6 +11,9 @@ WORKDIR /app
 # 3) Копируем файлы
 COPY . /app/
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 4) Устанавливаем uv и синхронизируем зависимости в системную среду контейнера
 RUN pip install --no-cache-dir uv \
     && uv sync

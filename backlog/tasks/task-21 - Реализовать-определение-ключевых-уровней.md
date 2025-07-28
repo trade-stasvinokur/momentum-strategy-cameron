@@ -1,12 +1,13 @@
 ---
 id: task-21
 title: Реализовать определение ключевых уровней
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-21'
-updated_date: '2025-07-21'
+updated_date: '2025-07-28'
 labels: []
 dependencies: []
+ordinal: 1000
 ---
 
 ## Description

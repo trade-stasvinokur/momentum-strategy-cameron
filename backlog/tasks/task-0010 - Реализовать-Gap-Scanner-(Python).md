@@ -4,9 +4,10 @@ title: Реализовать Gap-Scanner (Python)
 status: Done
 assignee: []
 created_date: '2025-07-14'
-updated_date: '2025-07-21'
+updated_date: '2025-07-28'
 labels: []
 dependencies: []
+ordinal: 2000
 ---
 
 ## Description

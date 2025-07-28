@@ -4,8 +4,30 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
   vwap_levels:
     build: ./src/vwap_levels
     ports:
       - "8001:8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+  orchestrator:
+    build: ./src/orchestrator
+    environment:
+      - TZ=Europe/Moscow
+    depends_on:
+      gap_scanner:
+        condition: service_healthy
+      vwap_levels:
+        condition: service_healthy
     restart: unless-stopped
