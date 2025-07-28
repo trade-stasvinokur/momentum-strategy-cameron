@@ -20,6 +20,7 @@ else:
 # URLs сервисов берём из переменных окружения (см. docker‑compose)
 SCAN_URL = os.getenv("GAP_SCANNER_URL", "http://gap-scanner:8000/gap-up")
 VWAP_URL = os.getenv("VWAP_LEVELS_URL", "http://vwap-levels:8001/vwap")
+GAP_AND_GO_URL = os.getenv("GAP_AND_GO_URL", "http://gap-and-go:8002/gap-and-go")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +59,33 @@ def run():
             )
         except Exception as e:
             logging.error(f"VWAP‑levels: {e}")
+
+        # ------------------------------
+        # Gap‑and‑Go strategy analysis
+        # ------------------------------
+        try:
+            gag_resp = requests.get(GAP_AND_GO_URL, params=params, timeout=60)
+            gag_resp.raise_for_status()
+            gag = gag_resp.json()
+
+            if gag.get("triggered"):
+                logging.info(
+                    "%s Gap&Go TRIGGERED ‑ entry %.2f stop %.2f at %s",
+                    ticker,
+                    gag["entry_price"],
+                    gag["stop_price"],
+                    gag["trigger_time"],
+                )
+            else:
+                logging.info(
+                    "%s Gap&Go not triggered. First candle H/L: %.2f / %.2f",
+                    ticker,
+                    gag["first_candle_high"],
+                    gag["first_candle_low"],
+                )
+
+        except Exception as e:
+            logging.error(f"Gap‑and‑Go: {e}")
 
 if __name__ == "__main__":
     run()

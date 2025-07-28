@@ -1,0 +1,12 @@
+[project]
+name = "strategies"
+version = "0.1.0"
+description = "strategies"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.116.1",
+    "python-dotenv>=1.1.1",
+    "tinkoff-investments>=0.2.0b115",
+    "uvicorn>=0.35.0",
+]

@@ -21,6 +21,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+  gap_and_go:
+    build:
+      context: ./src/strategies
+      dockerfile: DockerfileGapAndGo
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
   orchestrator:
     build: ./src/orchestrator
     environment:
@@ -29,5 +42,7 @@ services:
       gap_scanner:
         condition: service_healthy
       vwap_levels:
+        condition: service_healthy
+      gap_and_go:
         condition: service_healthy
     restart: unless-stopped
