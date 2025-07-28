@@ -1,7 +1,7 @@
 ---
 id: task-24
 title: Реализация стратегии 2
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-28'
 updated_date: '2025-07-28'

@@ -34,6 +34,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+  flat_breakout:
+    build:
+      context: ./src/strategies
+      dockerfile: DockerfileFlatBreakout
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
   orchestrator:
     build: ./src/orchestrator
     environment:
@@ -44,5 +57,7 @@ services:
       vwap_levels:
         condition: service_healthy
       gap_and_go:
+        condition: service_healthy
+      flat_breakout:
         condition: service_healthy
     restart: unless-stopped

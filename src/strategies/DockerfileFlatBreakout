@@ -1,0 +1,24 @@
+# -------------------------------
+# Dockerfile для модуля Flat Breakout
+# -------------------------------
+
+# 1) Базовый образ на Python 3.13
+FROM python:3.13-slim
+
+# 2) Рабочая директория
+WORKDIR /app
+
+# 3) Копируем файлы
+COPY . /app/
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 4) Устанавливаем uv и синхронизируем зависимости
+RUN pip install --no-cache-dir uv \
+    && uv sync
+
+EXPOSE 8003
+
+# 5) Команда запуска: запускаем uvicorn сервер для Flat Breakout API
+CMD ["uv", "run", "uvicorn", "flat_breakout:app", "--host", "0.0.0.0", "--port", "8003"]
