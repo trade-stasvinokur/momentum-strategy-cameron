@@ -25,6 +25,7 @@ VWAP_URL = os.getenv("VWAP_LEVELS_URL", "http://vwap_levels:8001/vwap")
 GAP_AND_GO_URL = os.getenv("GAP_AND_GO_URL", "http://gap_and_go:8002/gap-and-go")
 FLAT_BREAKOUT_URL = os.getenv("FLAT_BREAKOUT_URL", "http://flat_breakout:8003/flat-breakout")
 BULL_FLAG_URL = os.getenv("BULL_FLAG_URL", "http://bull_flag:8004/bull-flag")
+FIRST_PULLBACK_URL = os.getenv("FIRST_PULLBACK_URL", "http://first_pullback:8005/first-pullback")
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -50,7 +51,7 @@ def run() -> None:
     # Gap‑scanner
     # ------------------------------
     try:
-        resp = requests.get(SCAN_URL, params=params_gap, timeout=600)
+        resp = requests.get(SCAN_URL, params=params_gap, timeout=1200)
         resp.raise_for_status()
         gaps = resp.json()
     except Exception as exc:  # broad except so orchestrator continues even if scanner fails
@@ -174,6 +175,35 @@ def run() -> None:
                     logging.info("%s %s not triggered", ticker, label)
         except Exception as exc:
             logging.error("BullFlag: %s", exc)
+
+        # ------------------------------
+        # First Pullback pattern analysis
+        # ------------------------------
+        try:
+            fp_resp = requests.get(FIRST_PULLBACK_URL, params=params_common, timeout=60)
+            fp_resp.raise_for_status()
+            fp = fp_resp.json()
+
+            # Логируем результаты для 1min и 5min таймфреймов
+            for label, res_key in [("1m FirstPullback", "first_pullback_1min"),
+                                    ("5m FirstPullback", "first_pullback_5min")]:
+                res = fp.get(res_key, {})
+                if not isinstance(res, dict):
+                    continue
+                if res.get("triggered"):
+                    logging.info(
+                        "%s %s TRIGGERED – entry %.2f stop %.2f target %.2f at %s",
+                        ticker,
+                        label,
+                        res.get("entry_price", float("nan")),
+                        res.get("stop_price", float("nan")),
+                        res.get("target_price", float("nan")),
+                        res.get("trigger_time")
+                    )
+                else:
+                    logging.info("%s %s not triggered", ticker, label)
+        except Exception as exc:
+            logging.error("FirstPullback: %s", exc)
 
 
 # ---------------------------------------------------------------------------

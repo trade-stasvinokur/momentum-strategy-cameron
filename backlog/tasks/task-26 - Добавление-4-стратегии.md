@@ -1,9 +1,10 @@
 ---
 id: task-26
 title: Добавление 4 стратегии
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-28'
+updated_date: '2025-07-29'
 labels: []
 dependencies: []
 ---

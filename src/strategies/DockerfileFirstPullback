@@ -1,0 +1,17 @@
+# Dockerfile for First Pullback strategy service
+FROM python:3.13-slim
+
+WORKDIR /app
+COPY . /app/
+
+# Установка curl (для healthcheck) и очистка
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Установка инструмента uv и зависимостей проекта
+RUN pip install --no-cache-dir uv && uv sync
+
+EXPOSE 8005
+
+# Запуск Uvicorn-сервиса First Pullback
+CMD ["uv", "run", "uvicorn", "first_pullback:app", "--host", "0.0.0.0", "--port", "8005"]

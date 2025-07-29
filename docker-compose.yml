@@ -60,6 +60,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+  first_pullback:
+    build:
+      context: ./src/strategies
+      dockerfile: DockerfileFirstPullback
+    ports:
+      - "8005:8005"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
   orchestrator:
     build: ./src/orchestrator
     environment:
@@ -75,4 +88,7 @@ services:
         condition: service_healthy
       bull_flag:
         condition: service_healthy
+      first_pullback:
+        condition: service_healthy
+
     restart: unless-stopped
