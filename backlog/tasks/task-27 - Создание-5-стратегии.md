@@ -1,10 +1,10 @@
 ---
 id: task-27
 title: Создание 5 стратегии
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-29'
-updated_date: '2025-07-29'
+updated_date: '2025-07-30'
 labels: []
 dependencies: []
 ---

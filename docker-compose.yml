@@ -73,6 +73,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+  abcd:
+    build:
+      context: ./src/strategies
+      dockerfile: DockerfileABCD
+    ports:
+      - "8006:8006"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
   orchestrator:
     build: ./src/orchestrator
     environment:
@@ -89,6 +102,8 @@ services:
       bull_flag:
         condition: service_healthy
       first_pullback:
+        condition: service_healthy
+      abcd:
         condition: service_healthy
 
     restart: unless-stopped

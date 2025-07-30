@@ -26,6 +26,7 @@ GAP_AND_GO_URL = os.getenv("GAP_AND_GO_URL", "http://gap_and_go:8002/gap-and-go"
 FLAT_BREAKOUT_URL = os.getenv("FLAT_BREAKOUT_URL", "http://flat_breakout:8003/flat-breakout")
 BULL_FLAG_URL = os.getenv("BULL_FLAG_URL", "http://bull_flag:8004/bull-flag")
 FIRST_PULLBACK_URL = os.getenv("FIRST_PULLBACK_URL", "http://first_pullback:8005/first-pullback")
+ABCD_URL = os.getenv("ABCD_URL", "http://abcd:8006/abcd")
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -204,6 +205,32 @@ def run() -> None:
                     logging.info("%s %s not triggered", ticker, label)
         except Exception as exc:
             logging.error("FirstPullback: %s", exc)
+
+        # ------------------------------
+        # ABCD pattern analysis
+        # ------------------------------
+        try:
+            abcd_resp = requests.get(ABCD_URL, params=params_common, timeout=60)
+            abcd_resp.raise_for_status()
+            abcd = abcd_resp.json()
+            for label, res_key in [("1m ABCD", "abcd_1min"), ("5m ABCD", "abcd_5min")]:
+                res = abcd.get(res_key, {})
+                if not isinstance(res, dict):
+                    continue
+                if res.get("triggered"):
+                    logging.info(
+                        "%s %s TRIGGERED – entry %.2f stop %.2f target %.2f at %s",
+                        ticker, label,
+                        res.get("entry_price", float("nan")),
+                        res.get("stop_price", float("nan")),
+                        res.get("target_price", float("nan")),
+                        res.get("trigger_time")
+                    )
+                else:
+                    logging.info("%s %s not triggered", ticker, label)
+        except Exception as exc:
+            logging.error("ABCD: %s", exc)
+
 
 
 # ---------------------------------------------------------------------------
