@@ -105,5 +105,6 @@ services:
         condition: service_healthy
       abcd:
         condition: service_healthy
-
+    volumes:
+      - ./reports:/app/reports
     restart: unless-stopped
