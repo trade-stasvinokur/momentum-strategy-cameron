@@ -57,21 +57,21 @@ $(async function(){
   const $tb  = $('#tbl tbody');
   const cols = ['date','ticker','gap','prev_close','open','strategy','status','entry','stop','target','pl','time','vwap','support','resistance'];
   const tooltips = {
-    date       : 'Date when the gap scan ran',
-    ticker     : 'Stock symbol',
-    gap        : 'Gap size, %',
-    prev_close : 'Yesterday close price',
-    open       : 'Today opening price',
-    strategy   : 'Pattern / setup name',
-    status     : 'Was the pattern triggered?',
-    entry      : 'Entry price',
-    stop       : 'Initial stop-loss',
-    target     : 'Profit target',
-    pl         : 'Potential P/L per share',
-    time       : 'Trigger time (MSK)',
-    vwap       : 'Volume-weighted average price',
-    support    : 'Nearest support',
-    resistance : 'Nearest resistance'
+    date       : 'Дата выполнения сканера гэпов',
+    ticker     : 'Тикер',
+    gap        : 'Размер гэпа, %',
+    prev_close : 'Цена закрытия позавчера',
+    open       : 'Цена открытия вчера',
+    strategy   : 'Название стратегии',
+    status     : 'Была ли стратегия активирована?',
+    entry      : 'Цена входа',
+    stop       : 'Начальный стоп-лосс',
+    target     : 'Цель по прибыли',
+    pl         : 'Потенциальная прибыль/убыток на акцию',
+    time       : 'Время срабатывания (МСК)',
+    vwap       : 'Средневзвешенная по объёму цена (VWAP)',
+    support    : 'Ближайший уровень поддержки',
+    resistance : 'Ближайший уровень сопротивления'
   };
   rows.forEach(r=>{
     const $tr = $('<tr>');
