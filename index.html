@@ -1,0 +1,106 @@
+---
+layout: default
+title: Trade Stats
+---
+
+<!-- ── core + styling ─────────────────────────────────────────────── -->
+<link rel="stylesheet" href="https://cdn.datatables.net/2.3.2/css/dataTables.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.4/css/buttons.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/select/2.1.0/css/select.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/datetime/1.5.5/css/dataTables.dateTime.min.css">
+
+<table id="tbl" class="display" style="width:100%;table-layout:fixed">
+  <thead>
+    <tr>
+      <th>Date</th><th>Ticker</th><th>Strategy</th><th>Status</th>
+      <th>Entry</th><th>Stop</th><th>Target</th><th>P/L</th>
+      <th>Time</th><th>VWAP</th><th>Support</th><th>Resistance</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<style>
+/* zebra */
+#tbl tbody tr:nth-child(even){background:#f9f9f9;}
+/* status colour dot */
+#tbl td.status::before{
+  content:"";display:inline-block;width:.55em;height:.55em;margin-right:.35em;
+  border-radius:50%;background:var(--clr,transparent);
+}
+#tbl td.status[data-val="✅"]{--clr:#20c997;}
+#tbl td.status[data-val="❌"]{--clr:#ff6b6b;}
+
+/* filters row */
+#tbl thead tr.filters th{padding:4px 8px;}
+#tbl thead tr.filters input{width:100%;box-sizing:border-box;border:1px solid #ccc;border-radius:4px;padding:2px 4px;}
+</style>
+
+<!-- ── JavaScript ─────────────────────────────────────────────────── -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
+<script src="https://cdn.datatables.net/2.3.2/js/dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/3.2.4/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/select/2.1.0/js/dataTables.select.min.js"></script>
+<script src="https://cdn.datatables.net/datetime/1.5.5/js/dataTables.dateTime.min.js"></script>
+
+<script>
+$(async function(){
+  /* 1. Fetch public CSV ------------------------------------------------ */
+  const url  = 'https://raw.githubusercontent.com/trade-stasvinokur/trade-stasvinokur.github.io/main/reports/strategy_results.csv';
+  const text = await (await fetch(url)).text();
+  const rows = Papa.parse(text,{ header:true, skipEmptyLines:true }).data;
+
+  /* 2. Build tbody ----------------------------------------------------- */
+  const $tb  = $('#tbl tbody');
+  const cols = ['date','ticker','strategy','status','entry','stop','target','pl','time','vwap','support','resistance'];
+  rows.forEach(r=>{
+    const $tr = $('<tr>');
+    cols.forEach(k=>{
+      const $td = $('<td>').text(r[k] ?? '');
+      if(k === 'status') $td.addClass('status').attr('data-val',r[k] ?? '');
+      $tr.append($td);
+    });
+    $tb.append($tr);
+  });
+
+  /* 3. Add filters row ------------------------------------------------- */
+  $('#tbl thead tr').clone(true).addClass('filters').appendTo('#tbl thead');
+
+  /* 4. Initialise DataTables + column filters ------------------------- */
+  $('#tbl').DataTable({
+    orderCellsTop : true,
+    fixedHeader   : true,
+    order         : [[0,'desc']],  // default sort by Date desc, user can toggle asc
+    layout:{
+      topStart  : [],             // remove top entries-per-page selector
+      topEnd    : [],             // no global search box
+      bottomStart: ['info'],
+      bottomEnd : ['pageLength','paging'] // entries-per-page + paginator at bottom
+    },
+    columnDefs:[
+      { targets: 0, type:'date' },              // DateTime parses ISO yyyy-mm-dd
+      { targets:[4,5,6,7,8,9,10,11], type:'num' }
+    ],
+    paging:true,
+    initComplete:function(){
+      const api = this.api();
+      // For each column place an <input> element and wire it up
+      api.columns().eq(0).each(function(colIdx){
+        const cell = $('.filters th').eq(colIdx).empty();
+        const input = $('<input>')
+          .attr('placeholder','🔍')
+          .attr('title','Filter this column')
+          .appendTo(cell)
+          .on('keyup change clear', function(){
+            if(api.column(colIdx).search() !== this.value){
+              api.column(colIdx).search(this.value).draw();
+            }
+          });
+        // Prevent column sort when clicking on the input
+        input.on('click', e => e.stopPropagation());
+      });
+    }
+  });
+});
+</script>

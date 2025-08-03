@@ -1,4 +1,5 @@
 import os
+import csv
 import logging
 import json
 import requests
@@ -19,7 +20,7 @@ else:
     raise RuntimeError(".env file not found. Please create a .env file")
 
 # ---------------------------------------------------------------------------
-# Upstream service URLs (override via docker‑compose environment variables)
+# Upstream service URLs (override via docker-compose environment variables)
 # ---------------------------------------------------------------------------
 SCAN_URL = os.getenv("GAP_SCANNER_URL", "http://gap_scanner:8000/gap-up")
 VWAP_URL = os.getenv("VWAP_LEVELS_URL", "http://vwap_levels:8001/vwap")
@@ -194,7 +195,7 @@ def run() -> None:
             fp_resp.raise_for_status()
             fp = fp_resp.json()
 
-            # Логируем результаты для 1min и 5min таймфреймов
+            # Log results for 1min and 5min timeframes
             for label, res_key in [("1m FirstPullback", "first_pullback_1min"),
                                     ("5m FirstPullback", "first_pullback_5min")]:
                 res = fp.get(res_key, {})
@@ -243,123 +244,101 @@ def run() -> None:
             logging.error("ABCD: %s", exc)
 
     # ------------------------------
-    # Формирование Markdown-отчёта (table style)
+    # Формирование CSV-отчёта
     # ------------------------------
     reports_dir = Path(__file__).resolve().parent / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
-    file_path = reports_dir / f"strategy_results_{date.today():%d-%m-%Y}.md"
+    file_path = reports_dir / "strategy_results.csv"
 
     # --- группируем результаты {ticker: {...}} ---
     grouped: dict[str, dict] = {}
     for tick, strat_name, res in results_rows:
-        # ① сохраняем prev_close и open из gaps
         grp = grouped.setdefault(
             tick,
             {
-                "gap_pct": gap_pct,
-                "prev_close": next(g["prev_close"] for g in gaps["results"] if g["ticker"] == tick),
-                "open":       next(g["open"]       for g in gaps["results"] if g["ticker"] == tick),
                 "strategies": [],
             },
         )
         grp["strategies"].append((strat_name, res))
 
-    md_lines: list[str] = []
+    csv_rows: list[list] = []
+    header = [
+        "date",
+        "ticker",
+        "strategy",
+        "status",
+        "entry",
+        "stop",
+        "target",
+        "pl",
+        "time",
+        "vwap",
+        "support",
+        "resistance",
+    ]
 
     for tick, data in grouped.items():
-        # Заголовок тикера
-        md_lines.append(f"## 📌 {date.today():%d-%m-%Y} — Ticker: {tick}")
-        md_lines.append(
-            f"> Gap ↑ {data['gap_pct']:.2f}% "
-            f"(prev close {data['prev_close']:.2f} → open {data['open']:.2f})"
+        # Ищем блок VWAP Levels (может быть None, если сервис не ответил)
+        vwap_block = next(
+            (res for (strat_name, res) in data["strategies"] if strat_name == "VWAP Levels"),
+            {},
         )
-        md_lines.append("")
+        vwap_val = vwap_block.get("vwap", "")
+        sup_val = vwap_block.get("support", "")
+        res_val = vwap_block.get("resistance", "")
 
-        # -------- таблица по стратегиям --------
-        md_lines.append("### 📊 Strategy Results")
-        header = "| Strategy | Status | Entry | Stop | Target | P/L (1 shr) | Time |"
-        separator = "|----------|:-----:|------:|-----:|-------:|------------:|:----:|"
-        rows: list[str] = []
+        # Формируем строки по всем стратегиям, исключая сам блок VWAP Levels
         for strat_name, res in data["strategies"]:
             if strat_name == "VWAP Levels":
-                vwap_block = res  # позже покажем отдельно
                 continue
 
-            status = "✅" if res.get("triggered") else "❌"
-            entry = f"{res.get('entry_price', '—'):.2f}" if res.get("entry_price") else "—"
-            stop = f"{res.get('stop_price', '—'):.2f}" if res.get("stop_price") else "—"
-            target = (
-                f"{res.get('target_price'):.2f}" if res.get("target_price") else "—"
-            )
+            status_emoji = "✅" if res.get("triggered") else "❌"
 
-            # P/L
-            if res.get("entry_price") and res.get("stop_price"):
-                loss = res["entry_price"] - res["stop_price"]
-                profit = (
-                    res["target_price"] - res["entry_price"]
-                    if res.get("target_price")
-                    else loss
-                )
-                pl = f"+{profit:.2f}/-{loss:.2f}"
+            entry = f"{res.get('entry_price', ''):.2f}" if res.get("entry_price") else ""
+            stop = f"{res.get('stop_price', ''):.2f}" if res.get("stop_price") else ""
+            target = f"{res.get('target_price', ''):.2f}" if res.get("target_price") else ""
+
+            # P/L (только потенциальная прибыль, как в примере)
+            if res.get("triggered") and res.get("entry_price") and res.get("target_price"):
+                pl_val = f"+{res['target_price'] - res['entry_price']:.2f}"
             else:
-                pl = "—"
+                pl_val = ""
 
-            # Time UTC→MSK
+            # Время (UTC → Moscow) в HH:MM
             if res.get("trigger_time"):
                 try:
                     dt_utc = datetime.fromisoformat(res["trigger_time"])
                     dt_msk = dt_utc.astimezone(ZoneInfo("Europe/Moscow"))
-                    time_str = dt_msk.strftime("%H:%M")
+                    time_val = dt_msk.strftime("%H:%M")
                 except Exception:
-                    time_str = "—"
+                    time_val = ""
             else:
-                time_str = "—"
+                time_val = ""
 
-            rows.append(
-                f"| {strat_name} | {status} | {entry} | {stop} | "
-                f"{target} | {pl} | {time_str} |"
-            )
-
-        # собираем таблицу
-        md_lines.extend([header, separator, *rows, ""])
-
-        # --- VWAP-уровни с указанием σ ---
-        if vwap_block:
-            vwap   = vwap_block.get("vwap")
-            sup    = vwap_block.get("support")
-            res    = vwap_block.get("resistance")
-
-            # Базовая σ — расстояние до ближайшей полосы
-            if all((vwap, sup, res)):
-                sigma = min(abs(vwap - sup), abs(res - vwap))
-                # избегаем деления на 0
-                sigma = sigma if sigma else None
-            else:
-                sigma = None
-
-            # Функция-помощник для подписи уровня
-            def fmt(level: float, sign: str) -> str:
-                if sigma:
-                    n = round(abs(level - vwap) / sigma)
-                    return f"{level:.2f} ({sign}{n}σ)"
-                return f"{level:.2f}"
-
-            md_lines.extend(
+            csv_rows.append(
                 [
-                    "### 📊 VWAP & Key Levels",
-                    f"VWAP {vwap:.2f}",
-                    f"Support {fmt(sup, '−')}",
-                    f"Resistance {fmt(res, '+')}",
-                    "",
+                    today,
+                    tick,
+                    strat_name,
+                    status_emoji,
+                    entry,
+                    stop,
+                    target,
+                    pl_val,
+                    time_val,
+                    f"{vwap_val:.2f}" if isinstance(vwap_val, (int, float)) else vwap_val,
+                    f"{sup_val:.2f}" if isinstance(sup_val, (int, float)) else sup_val,
+                    f"{res_val:.2f}" if isinstance(res_val, (int, float)) else res_val,
                 ]
             )
 
-        # горизонтальный разделитель между тикерами
-        md_lines.append("---\n")
+    # Записываем CSV
+    with file_path.open("w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(header)
+        writer.writerows(csv_rows)
 
-    # запись файла
-    file_path.write_text("\n".join(md_lines), encoding="utf-8")
-    logging.info("Markdown-отчёт сохранён: %s", file_path)
+    logging.info("CSV-отчёт сохранён: %s", file_path)
 
 
 # ---------------------------------------------------------------------------
