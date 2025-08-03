@@ -56,10 +56,27 @@ $(async function(){
   /* 2. Build tbody ----------------------------------------------------- */
   const $tb  = $('#tbl tbody');
   const cols = ['date','ticker','gap','prev_close','open','strategy','status','entry','stop','target','pl','time','vwap','support','resistance'];
+  const tooltips = {
+    date       : 'Date when the gap scan ran',
+    ticker     : 'Stock symbol',
+    gap        : 'Gap size, %',
+    prev_close : 'Yesterday close price',
+    open       : 'Today opening price',
+    strategy   : 'Pattern / setup name',
+    status     : 'Was the pattern triggered?',
+    entry      : 'Entry price',
+    stop       : 'Initial stop-loss',
+    target     : 'Profit target',
+    pl         : 'Potential P/L per share',
+    time       : 'Trigger time (MSK)',
+    vwap       : 'Volume-weighted average price',
+    support    : 'Nearest support',
+    resistance : 'Nearest resistance'
+  };
   rows.forEach(r=>{
     const $tr = $('<tr>');
     cols.forEach(k=>{
-      const $td = $('<td>').text(r[k] ?? '');
+      const $td = $('<td>').text(r[k] ?? '').attr('title', tooltips[k] || '');
       if(k === 'status') $td.addClass('status').attr('data-val',r[k] ?? '');
       $tr.append($td);
     });
