@@ -86,6 +86,8 @@ $(async function(){
   /* 3. Add filters row ------------------------------------------------- */
   $('#tbl thead tr').clone(true).addClass('filters').appendTo('#tbl thead');
 
+  $('#tbl thead th').each((i, th) => th.title = tooltips[cols[i]]);
+
   /* 4. Initialise DataTables + column filters ------------------------- */
   $('#tbl').DataTable({
     orderCellsTop : true,
@@ -99,7 +101,11 @@ $(async function(){
     },
     columnDefs:[
       { targets: 0, type:'date' },              // DateTime parses ISO yyyy-mm-dd
-      { targets:[2,3,4,7,8,9,10,12,13,14], type:'num' }
+      { targets:[2,3,4,7,8,9,10,12,13,14], type:'num' },
+      { targets: '_all',
+        createdCell: (td, _, __, ___, colIdx) =>
+        td.title = tooltips[cols[colIdx]]
+      }
     ],
     paging:true,
     initComplete:function(){
