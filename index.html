@@ -53,7 +53,7 @@ $(async function(){
 
   /* 2. Build tbody ----------------------------------------------------- */
   const $tb  = $('#tbl tbody');
-  const cols = ['date','ticker','strategy','status','entry','stop','target','pl','time','vwap','support','resistance'];
+  const cols = ['date','ticker','gap','prev_close','open','strategy','status','entry','stop','target','pl','time','vwap','support','resistance'];
   rows.forEach(r=>{
     const $tr = $('<tr>');
     cols.forEach(k=>{

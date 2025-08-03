@@ -1,7 +1,6 @@
 import os
 import csv
 import logging
-import json
 import requests
 from pathlib import Path
 from datetime import datetime, date
@@ -167,7 +166,7 @@ def run() -> None:
             bf = bf_resp.json()
             # Log results for 1m and 5m timeframes
             for label, res_key in [("1m BullFlag", "bull_flag_1min"),
-                                    ("5m BullFlag", "bull_flag_5min")]:
+                                   ("5m BullFlag", "bull_flag_5min")]:
                 res = bf.get(res_key, {})
                 if not isinstance(res, dict):
                     continue
@@ -197,7 +196,7 @@ def run() -> None:
 
             # Log results for 1min and 5min timeframes
             for label, res_key in [("1m FirstPullback", "first_pullback_1min"),
-                                    ("5m FirstPullback", "first_pullback_5min")]:
+                                   ("5m FirstPullback", "first_pullback_5min")]:
                 res = fp.get(res_key, {})
                 if not isinstance(res, dict):
                     continue
@@ -253,9 +252,13 @@ def run() -> None:
     # --- группируем результаты {ticker: {...}} ---
     grouped: dict[str, dict] = {}
     for tick, strat_name, res in results_rows:
+        gap_data = next((g for g in gaps["results"] if g["ticker"] == tick), {})
         grp = grouped.setdefault(
             tick,
             {
+                "gap": gap_data.get("gap"),
+                "prev_close": gap_data.get("prev_close"),
+                "open": gap_data.get("open"),
                 "strategies": [],
             },
         )
@@ -265,6 +268,9 @@ def run() -> None:
     header = [
         "date",
         "ticker",
+        "gap",
+        "prev_close",
+        "open",
         "strategy",
         "status",
         "entry",
@@ -287,13 +293,17 @@ def run() -> None:
         sup_val = vwap_block.get("support", "")
         res_val = vwap_block.get("resistance", "")
 
+        gap_raw = data.get("gap")
+        gap_pct = f"{gap_raw * 100:.2f}" if isinstance(gap_raw, (int, float)) else ""
+        prev_cls = f"{data['prev_close']:.2f}" if isinstance(data.get("prev_close"), (int, float)) else ""
+        open_val = f"{data['open']:.2f}" if isinstance(data.get("open"), (int, float)) else ""
+
         # Формируем строки по всем стратегиям, исключая сам блок VWAP Levels
         for strat_name, res in data["strategies"]:
             if strat_name == "VWAP Levels":
                 continue
 
             status_emoji = "✅" if res.get("triggered") else "❌"
-
             entry = f"{res.get('entry_price', ''):.2f}" if res.get("entry_price") else ""
             stop = f"{res.get('stop_price', ''):.2f}" if res.get("stop_price") else ""
             target = f"{res.get('target_price', ''):.2f}" if res.get("target_price") else ""
@@ -319,6 +329,9 @@ def run() -> None:
                 [
                     today,
                     tick,
+                    gap_pct,
+                    prev_cls,
+                    open_val,
                     strat_name,
                     status_emoji,
                     entry,
