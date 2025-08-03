@@ -47,7 +47,7 @@ title: Trade Stats
 <script>
 $(async function(){
   /* 1. Fetch public CSV ------------------------------------------------ */
-  const url  = 'https://raw.githubusercontent.com/trade-stasvinokur/trade-stasvinokur.github.io/main/reports/strategy_results.csv';
+  const url  = 'https://raw.githubusercontent.com/trade-stasvinokur/momentum-strategy-cameron/main/reports/strategy_results.csv';
   const text = await (await fetch(url)).text();
   const rows = Papa.parse(text,{ header:true, skipEmptyLines:true }).data;
 
