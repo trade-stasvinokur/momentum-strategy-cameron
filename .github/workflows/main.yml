@@ -31,7 +31,7 @@ jobs:
             sudo systemctl start docker
           fi;
 
-      - name: Create .env for gap_scanner
+      - name: Create .env for gap_scanner, strategies and vwap_levels
         env:
           TINKOFF_INVEST_TOKEN: ${{ secrets.TINKOFF_INVEST_TOKEN }}
         run: |
@@ -40,6 +40,18 @@ jobs:
                 "$TINKOFF_INVEST_TOKEN" \
               > "${GITHUB_WORKSPACE}/src/gap_scanner/.env"
           chmod 600 "${GITHUB_WORKSPACE}/src/gap_scanner/.env"
+
+          mkdir -p "${GITHUB_WORKSPACE}/src/strategies"
+          printf 'TINKOFF_INVEST_TOKEN=%s\nLOG_LEVEL=INFO\n' \
+                "$TINKOFF_INVEST_TOKEN" \
+              > "${GITHUB_WORKSPACE}/src/strategies/.env"
+          chmod 600 "${GITHUB_WORKSPACE}/src/strategies/.env"
+
+          mkdir -p "${GITHUB_WORKSPACE}/src/vwap_levels"
+          printf 'TINKOFF_INVEST_TOKEN=%s\nLOG_LEVEL=INFO\n' \
+                "$TINKOFF_INVEST_TOKEN" \
+              > "${GITHUB_WORKSPACE}/src/vwap_levels/.env"
+          chmod 600 "${GITHUB_WORKSPACE}/src/vwap_levels/.env"
 
       - name: Build, run docker and follow logs (15 min)
         run: |
