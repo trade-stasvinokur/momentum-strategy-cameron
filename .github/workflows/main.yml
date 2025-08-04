@@ -53,6 +53,12 @@ jobs:
               > "${GITHUB_WORKSPACE}/src/vwap_levels/.env"
           chmod 600 "${GITHUB_WORKSPACE}/src/vwap_levels/.env"
 
+          mkdir -p "${GITHUB_WORKSPACE}/src/orchestrator"
+          printf 'TINKOFF_INVEST_TOKEN=%s\nLOG_LEVEL=INFO\n' \
+                "$TINKOFF_INVEST_TOKEN" \
+              > "${GITHUB_WORKSPACE}/src/orchestrator/.env"
+          chmod 600 "${GITHUB_WORKSPACE}/src/orchestrator/.env"
+
       - name: Build, run docker and follow logs (15 min)
         run: |
           set -e
