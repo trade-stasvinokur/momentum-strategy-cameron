@@ -31,14 +31,25 @@ jobs:
             sudo systemctl start docker
           fi;
 
-      - name: Run docker
+      - name: Create .env for gap_scanner
+        env:
+          TINKOFF_INVEST_TOKEN: ${{ secrets.TINKOFF_INVEST_TOKEN }}
         run: |
-            cd ${GITHUB_WORKSPACE}
-            docker compose -f docker-compose.yml build --no-cache
-            docker compose -f docker-compose.yml up
+          mkdir -p "${GITHUB_WORKSPACE}/src/gap_scanner"
+          printf 'TINKOFF_INVEST_TOKEN=%s\nLOG_LEVEL=INFO\n' \
+                "$TINKOFF_INVEST_TOKEN" \
+              > "${GITHUB_WORKSPACE}/src/gap_scanner/.env"
+          chmod 600 "${GITHUB_WORKSPACE}/src/gap_scanner/.env"
 
-      - name: Wait for 15 minutes
-        run: sleep 900
+      - name: Build, run docker and follow logs (15 min)
+        run: |
+          set -e
+          cd ${GITHUB_WORKSPACE}
+          docker compose -f docker-compose.yml build --no-cache
+          docker compose -f docker-compose.yml up -d
+          echo "::group::docker compose live logs"
+          timeout 900 docker compose logs -f --no-color || true
+          echo "::endgroup::"
 
       - name: Fail if report is missing
         run: test -f reports/strategy_results.csv
