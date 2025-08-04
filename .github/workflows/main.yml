@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  schedule:
+    - cron: '0 21 * * *'
   workflow_dispatch:
 
 jobs:
@@ -31,7 +33,7 @@ jobs:
             sudo systemctl start docker
           fi;
 
-      - name: Create .env for gap_scanner, strategies and vwap_levels
+      - name: Create .env for all services
         env:
           TINKOFF_INVEST_TOKEN: ${{ secrets.TINKOFF_INVEST_TOKEN }}
         run: |
@@ -59,14 +61,31 @@ jobs:
               > "${GITHUB_WORKSPACE}/src/orchestrator/.env"
           chmod 600 "${GITHUB_WORKSPACE}/src/orchestrator/.env"
 
-      - name: Build, run docker and follow logs (15 min)
+      - name: Build stack and wait for “Scheduler started”
         run: |
           set -e
-          cd ${GITHUB_WORKSPACE}
-          docker compose -f docker-compose.yml build --no-cache
-          docker compose -f docker-compose.yml up -d
+          cd "${GITHUB_WORKSPACE}"
+
+          # 1. Сборка и запуск сервисов
+          docker compose -f docker-compose.yml up -d --build
+
+          # 2. Открываем сгруппированный вывод логов
           echo "::group::docker compose live logs"
-          timeout 900 docker compose logs -f --no-color || true
+          # timeout прекращает поток через 900 с, если условия не выполнились
+          if timeout 900 bash -c '
+            # Вытягиваем только orchestrator-контейнер (быстрее и чище)
+            docker compose logs -f --no-color orchestrator |
+            while IFS= read -r line; do
+              printf "%s\n" "$line"             # печатаем в вывод Actions
+              [[ "$line" == *"Scheduler started"* ]] && exit 0   # нашли — выходим
+            done
+          '; then
+            echo "✅ Scheduler detected — продолжаем workflow"
+          else
+            echo "::endgroup::"
+            echo "::error::Scheduler line not found within 15 minutes"
+            exit 1
+          fi
           echo "::endgroup::"
 
       - name: Fail if report is missing
