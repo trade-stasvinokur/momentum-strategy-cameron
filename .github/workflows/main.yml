@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get path
+        run: echo ${GITHUB_WORKSPACE}
+
+      - name: Update OS without interactive prompts
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update -y
+          sudo apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+          sudo apt-get dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+          sudo apt autoremove -y
+
+      - name: Install docker
+        run: |
+          if [[ $(which docker) && $(docker --version) ]]; then true; 
+          else
+            curl -fsSL https://get.docker.com -o get-docker.sh
+            sudo sh get-docker.sh
+            sudo systemctl enable docker
+            sudo systemctl start docker
+          fi;
+
+      - name: Run docker
+        run: |
+            cd ${GITHUB_WORKSPACE}
+            docker compose -f docker-compose.yml build --no-cache
+            docker compose -f docker-compose.yml up -d
+
+      - name: Wait for 15 minutes
+        run: sleep 900
+
+      - name: Fail if report is missing
+        run: test -f reports/strategy_results.csv
+
+      - name: Commit strategy_results.csv
+        uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: |
+            chore(ci): update strategy_results.csv
+          file_pattern: reports/strategy_results.csv
+
+      - name: Docker image prune final
+        run: |
+          docker system prune -af
+          sudo rm -rf /var/log/*

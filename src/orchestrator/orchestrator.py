@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
+import tempfile
+import shutil
 
 # ---------------------------------------------------------------------------
 # Load environment variables from .env
@@ -249,6 +251,17 @@ def run() -> None:
     reports_dir.mkdir(parents=True, exist_ok=True)
     file_path = reports_dir / "strategy_results.csv"
 
+    # ---- Проверяем, нужно ли писать сегодняшние строки ----
+    today = date.today().isoformat()
+    if file_path.exists():
+        with file_path.open("r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            existing_header = next(reader, [])
+            first_data_row = next(reader, [])
+        if first_data_row and first_data_row[0] == today:
+            logging.info("Данные за %s уже есть – файл не изменён.", today)
+            return
+
     # --- группируем результаты {ticker: {...}} ---
     grouped: dict[str, dict] = {}
     for tick, strat_name, res in results_rows:
@@ -345,13 +358,27 @@ def run() -> None:
                 ]
             )
 
-    # Записываем CSV
-    with file_path.open("w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(header)
-        writer.writerows(csv_rows)
+    # ---- Собираем старые данные ----
+    old_rows = []
+    if file_path.exists():
+        with file_path.open("r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            old_header = next(reader, [])
+            old_rows = list(reader)
 
-    logging.info("CSV-отчёт сохранён: %s", file_path)
+    # ---- Пишем во временный файл, потом атомарно заменяем ----
+    with tempfile.NamedTemporaryFile("w",
+                                    newline="",
+                                    encoding="utf-8",
+                                    delete=False) as tmp:
+        writer = csv.writer(tmp)
+        writer.writerow(header)           # шапка (можно взять existing_header, если она у вас менялась)
+        writer.writerows(csv_rows)        # свежие строки
+        writer.writerows(old_rows)        # предыдущие записи
+        tmp_name = tmp.name
+
+    shutil.move(tmp_name, file_path)
+    logging.info("CSV-отчёт обновлён: %s", file_path)
 
 
 # ---------------------------------------------------------------------------
