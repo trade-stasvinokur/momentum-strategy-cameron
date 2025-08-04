@@ -36,6 +36,13 @@ title: Trade Stats
 /* filters row */
 #tbl thead tr.filters th{padding:4px 8px;}
 #tbl thead tr.filters input{width:100%;box-sizing:border-box;border:1px solid #ccc;border-radius:4px;padding:2px 4px;}
+
+/* выключаем «коробку» только для этой страницы */
+.page-content,        /* Minima 2.x */
+.wrapper              /* Minima 3.x / другие темы */
+{ max-width: none !important; width: 100% !important; }
+
+table.dataTable { width: 100% !important; }  /* подстраховка против стилей DataTables */
 </style>
 
 <!-- ── JavaScript ─────────────────────────────────────────────────── -->
