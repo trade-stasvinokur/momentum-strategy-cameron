@@ -1,9 +1,10 @@
 ---
 id: task-28
 title: Сформировать витрину по стратегиям на ежедневной основе
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-07-30'
+updated_date: '2025-08-04'
 labels: []
 dependencies: []
 ---
