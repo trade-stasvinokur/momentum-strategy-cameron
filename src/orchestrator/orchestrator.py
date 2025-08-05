@@ -62,7 +62,7 @@ def run() -> None:
         return
 
     if not gaps or not gaps.get("results"):
-        logging.info("Нет акций с гэпом выше порога.")
+        logging.info(f"Нет акций с гэпом выше порога. gaps: {gaps}")
         return
 
     results_rows: list = []  # collect results for report
