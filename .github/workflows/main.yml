@@ -70,6 +70,7 @@ jobs:
           echo "::group::docker compose live logs"
           timeout 900 docker compose logs -f --no-color || true
           echo "::endgroup::"
+          ls -l reports && head -n 5 reports/strategy_results.csv
 
       - name: Fail if report is missing
         run: test -f reports/strategy_results.csv
