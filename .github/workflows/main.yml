@@ -64,14 +64,14 @@ jobs:
               > "${GITHUB_WORKSPACE}/src/orchestrator/.env"
           chmod 600 "${GITHUB_WORKSPACE}/src/orchestrator/.env"
 
-      - name: Build, run docker and follow logs (15 min)
+      - name: Build, run docker and follow logs (25 min)
         run: |
           set -e
           cd ${GITHUB_WORKSPACE}
           docker compose -f docker-compose.yml build --no-cache
           docker compose -f docker-compose.yml up -d
           echo "::group::docker compose live logs"
-          timeout 900 docker compose logs -f --no-color || true
+          timeout 1500 docker compose logs -f --no-color || true
           echo "::endgroup::"
           ls -l reports && head -n 5 reports/strategy_results.csv
 
